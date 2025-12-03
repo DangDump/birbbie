@@ -1,8 +1,7 @@
 import discord
 from discord.ext import commands
-import os
-from dotenv import load_dotenv
-load_dotenv()
+# List premium user IDs here (integers). Example: premmies = [123456789012345678]
+premmies = [866515241256615988, 1394579020183638066, 1001926461344727150, 939826140024045569, 734413166615855184]
 
 class Premium(commands.Cog):
     def __init__(self, client: commands.Bot):
@@ -19,11 +18,7 @@ class Premium(commands.Cog):
                 name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url
             )
         )
-        premmies = os.getenv("PREMIUM_USERS", "").split(",")
-        if ctx.author.id in premmies:
-            HasPremium = True
-        else:
-            HasPremium = False
+        HasPremium = ctx.author.id in premmies
 
         if HasPremium:
             await msg.edit(
@@ -67,11 +62,8 @@ class Premium(commands.Cog):
           with the text: "{user} message was sent successfully." where {user} is replaced
           by the invoking user's display name.
         """
-        # Load premium users from env and normalize to strings
-        premmies = [p.strip() for p in os.getenv("PREMIUM_USERS", "").split(",") if p.strip()]
-        author_id_str = str(getattr(ctx.author, "id", ""))
-
-        if author_id_str not in premmies:
+        # Check membership against the module-level `premmies` list
+        if ctx.author.id not in premmies:
             # Not premium — respond accordingly. If slash invoked, make it ephemeral.
             if getattr(ctx, "interaction", None):
                 try:
@@ -84,9 +76,10 @@ class Premium(commands.Cog):
                 await ctx.send("You must be a premium user to use this command.")
             return
 
-        # Try to send the message to the current channel as the bot
+        # Format and send the message to the current channel as the bot
+        formatted = f"**@{ctx.author.display_name}:** {message}"
         try:
-            await ctx.channel.send(message)
+            await ctx.channel.send(formatted)
         except Exception as e:
             # If sending failed, reply with an ephemeral error (if possible)
             if getattr(ctx, "interaction", None):
