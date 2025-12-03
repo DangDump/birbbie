@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 # List premium user IDs here (integers). Example: premmies = [123456789012345678]
 premmies = [866515241256615988, 1394579020183638066, 1001926461344727150, 939826140024045569, 734413166615855184]
 
@@ -52,12 +53,13 @@ class Premium(commands.Cog):
             )
 
     @commands.hybrid_command(name="say", description="Make the bot say something (premium only).")
+    @app_commands.describe(message="The message to send")
     async def say(self, ctx: commands.Context, *, message: str):
         """
-        Send a message as the bot. Only users listed in the PREMIUM_USERS env var may use this.
+        Send a message as the bot. Only users listed in the premmies list may use this.
 
         Behavior:
-        - The bot will post `message` into the current channel.
+        - The bot will post `message` into the current channel formatted as **@author:** message.
         - If invoked as a slash command, the acknowledgement will be sent ephemerally to the user
           with the text: "{user} message was sent successfully." where {user} is replaced
           by the invoking user's display name.
@@ -76,8 +78,16 @@ class Premium(commands.Cog):
                 await ctx.send("You must be a premium user to use this command.")
             return
 
-        # Format and send the message to the current channel as the bot
-        formatted = f"**@{ctx.author.display_name}:** {message}"
+        # Check if in a server (guild) or DM
+        is_in_server = ctx.guild is not None
+
+        if is_in_server:
+            # Format with author and send the message to the current channel as the bot
+            formatted = f"**@{ctx.author.display_name}:** {message}"
+        else:
+            # In DM, send message as-is without author
+            formatted = message
+
         try:
             await ctx.channel.send(formatted)
         except Exception as e:
@@ -94,19 +104,20 @@ class Premium(commands.Cog):
                 await ctx.send("Failed to send message. Ensure I have permission to send messages in this channel.")
             return
 
-        # Confirm to the user. If slash command, send ephemeral; otherwise, reply normally.
-        confirm_text = f"{ctx.author.display_name} message was sent successfully."
-        if getattr(ctx, "interaction", None):
-            try:
-                await ctx.interaction.response.send_message(confirm_text, ephemeral=True)
-            except Exception:
-                # If response already used, use followup
+        # Confirm to the user only if in a server. If slash command, send ephemeral; otherwise, reply normally.
+        if is_in_server:
+            confirm_text = f"{ctx.author.display_name} message was sent successfully."
+            if getattr(ctx, "interaction", None):
                 try:
-                    await ctx.interaction.followup.send(confirm_text, ephemeral=True)
+                    await ctx.interaction.response.send_message(confirm_text, ephemeral=True)
                 except Exception:
-                    await ctx.send(confirm_text)
-        else:
-            await ctx.send(confirm_text)
+                    # If response already used, use followup
+                    try:
+                        await ctx.interaction.followup.send(confirm_text, ephemeral=True)
+                    except Exception:
+                        await ctx.send(confirm_text)
+            else:
+                await ctx.send(confirm_text)
 
 
 async def setup(client: commands.Bot) -> None:
