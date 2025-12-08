@@ -433,6 +433,52 @@ class MessageQuota(discord.ui.Modal, title="Message Quota"):
             pass
 
 
+class ModcasesQuota(discord.ui.Modal, title="Modcases Quota"):
+    def __init__(self, author: discord.Member, default: str = None, message=None):
+        super().__init__()
+        self.Quota = discord.ui.TextInput(
+            label="Quota Amount",
+            placeholder="Enter the amount of modcases required to be active",
+            style=discord.TextStyle.short,
+            default=default,
+        )
+        self.add_item(self.Quota)
+        self.author = author
+        self.message = message
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(embed=NotYourPanel(), ephemeral=True)
+        try:
+            int(self.Quota.value)
+        except (ValueError, TypeError):
+            return await interaction.followup.send(
+                content=f"{redx} **{interaction.user.display_name},** please enter a valid number.",
+                ephemeral=True,
+            )
+        Config = await interaction.client.config.find_one({"_id": interaction.guild.id})
+        if not Config:
+            Config = {"Modcases Quota": {}, "_id": interaction.guild.id}
+        if not Config.get("Modcases Quota"):
+            Config["Modcases Quota"] = {}
+        Config["Modcases Quota"]["quota"] = int(self.Quota.value)
+        await interaction.client.config.update_one({"_id": interaction.guild.id}, {"$set": Config}, upsert=True)
+        Updated = await interaction.client.config.find_one({"_id": interaction.guild.id})
+        await interaction.edit_original_response(content="")
+        try:
+            # reuse MessageQuotaEmbed to show updated config; it will still display message quota but we'll update that to include modcases later
+            await self.message.edit(
+                embed=await MessageQuotaEmbed(
+                    interaction,
+                    Updated,
+                    discord.Embed(color=discord.Color.dark_embed()),
+                ),
+            )
+        except:
+            pass
+
+
 class AutoActivity(discord.ui.Select):
     def __init__(self, author):
         self.author = author
@@ -600,4 +646,311 @@ async def MessageQuotaEmbed(
         value=f"{replytop} `Quota:` {Config.get('Message Quota', {}).get('quota', 'Not Configured')}\n{replybottom} `Ignored Channels:` {IgnoredChannels}\n\nIf you need help either go to the [support server](https://discord.gg/36xwMFWKeC) or read the [documentation](https://docs.astrobirb.dev/Modules/quota)",
         inline=False,
     )
+    # Modcases quota display
+    embed.add_field(
+        name=" Modcases Quota",
+        value=f"`Quota:` {Config.get('Modcases Quota', {}).get('quota', 'Not Configured')}",
+        inline=False,
+    )
     return embed
+
+
+class ModcasesQuotaOptions(discord.ui.Select):
+    def __init__(self, author: discord.Member):
+        super().__init__(
+            options=[
+                discord.SelectOption(
+                    label="Quota Amount", emoji=None
+                ),
+                discord.SelectOption(
+                    label="Role Quota", emoji=None
+                ),
+            ]
+        )
+        self.author = author
+
+    async def callback(self, interaction: discord.Interaction):
+        from Cogs.Configuration.Configuration import Reset, ConfigMenu, Options
+
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=discord.Embed(
+                    description=f"{redx} **{interaction.user.display_name},** this is not your panel!",
+                    color=discord.Colour.brand_red(),
+                ),
+                ephemeral=True,
+            )
+
+        selection = self.values[0]
+        view = discord.ui.View()
+        
+        if selection == "Quota Amount":
+            await interaction.response.send_modal(
+                ModcasesQuota(
+                    author=interaction.user, default=None, message=interaction.message
+                )
+            )
+            return
+        
+        if selection == "Role Quota":
+            await interaction.response.defer()
+            config = await interaction.client.config.find_one(
+                {"_id": interaction.guild.id}
+            )
+            await Reset(
+                interaction,
+                lambda: ModcasesQuotaOptions(interaction.user),
+                lambda: ConfigMenu(Options(config), interaction.user),
+            )
+            embeds = []
+
+            roles = config.get("Modcases Quota", {}).get("Roles", [])
+            pages = [roles[i : i + 5] for i in range(0, len(roles), 5)]
+
+            def Embed():
+                embed = discord.Embed(color=discord.Color.dark_embed())
+                embed.set_author(
+                    icon_url="https://cdn.discordapp.com/emojis/1400797914011271231.webp?size=96",
+                    name="Modcases Role Quotas",
+                )
+                embed.description = ""
+                return embed
+
+            for P in pages:
+                embed = Embed()
+                for E in P:
+                    Role = interaction.guild.get_role(E.get("ID"))
+                    if not Role:
+                        continue
+                    embed.description += f"> {Role.mention} • {E.get('Quota')} modcases\n"
+                embeds.append(embed)
+            if not embeds:
+                embed = Embed()
+                embed.description = "-# There are no set role quotas."
+                embeds.append(embed)
+
+            RoleManage = ModcasesRoleQuotaCreation(interaction.user)
+            view = BasicPaginator(author=interaction.user, embeds=embeds)
+            if IsSeperateBot():
+                RoleManage.Add.label = "Add"
+                RoleManage.Remove.label = "Remove"
+            for item in RoleManage.children:
+                view.add_item(item)
+
+            await interaction.followup.send(view=view, embed=embeds[0], ephemeral=True)
+
+            return
+
+
+async def ModcasesQuotaEmbed(
+    interaction: discord.Interaction, Config: dict, embed: discord.Embed
+):
+    Config = await interaction.client.config.find_one({"_id": interaction.guild.id})
+    if not Config:
+        Config = {"Modcases Quota": {}}
+    embed.set_author(name=f"{interaction.guild.name}", icon_url=interaction.guild.icon)
+    embed.set_thumbnail(url=interaction.guild.icon)
+    embed.description = "> This is where you can manage your server's modcases quota! You can find out more at [the documentation](https://docs.astrobirb.dev/Modules/quota).\n"
+    embed.add_field(
+        name=" Modcases Quota",
+        value=f"{replytop} `Quota:` {Config.get('Modcases Quota', {}).get('quota', 'Not Configured')}\n\nIf you need help either go to the [support server](https://discord.gg/36xwMFWKeC) or read the [documentation](https://docs.astrobirb.dev/Modules/quota)",
+        inline=False,
+    )
+    return embed
+
+
+class ModcasesRoleQuotaCreation(discord.ui.View):
+    def __init__(self, author: discord.Member):
+        super().__init__(timeout=None)
+        self.author = author
+
+    @discord.ui.button(
+        emoji = None, style=discord.ButtonStyle.gray, row=2
+    )
+    async def Add(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=discord.Embed(
+                    description=f"{redx} **{interaction.user.display_name},** this is not your panel!",
+                    color=discord.Colour.brand_red(),
+                ),
+                ephemeral=True,
+            )
+        view = discord.ui.View()
+        view.add_item(ModcasesRoleQuotaSelect(interaction.user))
+        embed = discord.Embed(
+            color=discord.Color.dark_embed(),
+            description="Select a role to add a custom modcases quota to.",
+        )
+        await interaction.edit_original_response(view=view, embed=embed)
+
+    @discord.ui.button(
+        emoji = None, style=discord.ButtonStyle.gray, row=2
+    )
+    async def Remove(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=discord.Embed(
+                    description=f"{redx} **{interaction.user.display_name},** this is not your panel!",
+                    color=discord.Colour.brand_red(),
+                ),
+                ephemeral=True,
+            )
+
+        config = await interaction.client.db["Config"].find_one(
+            {"_id": interaction.guild.id}
+        )
+        if (
+            not config
+            or "Modcases Quota" not in config
+            or "Roles" not in config["Modcases Quota"]
+        ):
+            return await interaction.followup.send(
+                content=f"{no} **{interaction.user.display_name},** there aren't any roles to delete.",
+                ephemeral=True,
+            )
+        roles = config["Modcases Quota"]["Roles"]
+        if not roles:
+            return await interaction.followup.send(
+                content=f"{no} **{interaction.user.display_name},** there aren't any roles to delete.",
+                ephemeral=True,
+            )
+        options = [
+            discord.SelectOption(
+                label=(
+                    interaction.guild.get_role(role["ID"]).name
+                    if interaction.guild.get_role(role["ID"])
+                    else f"Unknown Role ({role['ID']})"
+                ),
+                value=str(role["ID"]),
+            )
+            for role in roles
+        ]
+        view = discord.ui.View()
+        view.add_item(ModcasesRoleQuotaDelete(options=options, author=self.author))
+        await interaction.edit_original_response(
+            view=view,
+            embed=discord.Embed(
+                description="Select the role(s) you want to remove the modcases quota for.",
+                color=discord.Color.dark_embed(),
+            ),
+        )
+
+
+class ModcasesRoleQuotaSelect(discord.ui.RoleSelect):
+    def __init__(self, author: discord.Member):
+        super().__init__()
+        self.author = author
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=discord.Embed(
+                    description=f"{redx} **{interaction.user.display_name},** this is not your panel!",
+                    color=discord.Colour.brand_red(),
+                ),
+                ephemeral=True,
+            )
+        await interaction.response.send_modal(
+            ModcasesRoleQuotaModal(author=interaction.user, Role=self.values[0])
+        )
+
+
+class ModcasesRoleQuotaModal(discord.ui.Modal):
+    def __init__(self, author: discord.Member, Role: discord.Role):
+        super().__init__(title="Modcases Role Quota")
+        self.author = author
+        self.Role = Role
+        self.RoleQuota = discord.ui.TextInput(
+            label="Quota",
+            placeholder="What should the modcases quota be for this role?",
+        )
+        self.add_item(self.RoleQuota)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=discord.Embed(
+                    description=f"{redx} **{interaction.user.display_name},** this is not your panel!",
+                    color=discord.Colour.brand_red(),
+                ),
+                ephemeral=True,
+            )
+
+        try:
+            int(self.RoleQuota.value)
+        except (ValueError, TypeError):
+            return await interaction.followup.send(
+                content=f"{redx} **{interaction.user.display_name},** please enter a valid number.",
+                ephemeral=True,
+            )
+
+        config = await interaction.client.db["Config"].find_one(
+            {"_id": interaction.guild.id}
+        )
+        if not config:
+            config = {"_id": interaction.guild.id, "Modcases Quota": {"Roles": []}}
+        elif "Modcases Quota" not in config:
+            config["Modcases Quota"] = {"Roles": []}
+        elif "Roles" not in config["Modcases Quota"]:
+            config["Modcases Quota"]["Roles"] = []
+
+        roles: list = config["Modcases Quota"]["Roles"]
+
+        for Data in roles:
+            if Data["ID"] == self.Role.id:
+                Data["Quota"] = self.RoleQuota.value
+                break
+        else:
+            roles.append({"ID": self.Role.id, "Quota": self.RoleQuota.value})
+
+        await interaction.client.db["Config"].update_one(
+            {"_id": interaction.guild.id}, {"$set": config}, upsert=True
+        )
+        await interaction.response.edit_message(
+            view=None,
+            content=f"{tick} **{interaction.user.display_name},** successfully added the modcases role quota.",
+            embed=None,
+        )
+
+
+class ModcasesRoleQuotaDelete(discord.ui.Select):
+    def __init__(self, options: list, author: discord.Member):
+        super().__init__(options=options, max_values=len(options))
+        self.author = author
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        if interaction.user.id != self.author.id:
+            return await interaction.followup.send(
+                embed=NotYourPanel(),
+                ephemeral=True,
+            )
+
+        config = await interaction.client.db["Config"].find_one(
+            {"_id": interaction.guild.id}
+        )
+        if (
+            not config
+            or "Modcases Quota" not in config
+            or "Roles" not in config["Modcases Quota"]
+        ):
+            return await interaction.followup.send(
+                content=f"{no} **{interaction.user.display_name},** there aren't any roles to delete."
+            )
+
+        roles = config["Modcases Quota"]["Roles"]
+        Roles = [r for r in roles if str(r["ID"]) not in self.values]
+        config["Modcases Quota"]["Roles"] = Roles
+
+        await interaction.client.db["Config"].update_one(
+            {"_id": interaction.guild.id}, {"$set": config}, upsert=True
+        )
+        await interaction.edit_original_response(
+            view=None,
+            content=f"{tick} **{interaction.user.display_name},** successfully deleted the modcases role quota.",
+            embed=None,
+        )
+

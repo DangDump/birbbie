@@ -156,6 +156,8 @@ class Client(commands.AutoShardedBot):
     def _initialize_cogslist(self):
         return [
             # Modules
+            "Cogs.Modules.afk",
+            "Cogs.Modules.membercount",
             "Cogs.Modules.suggestions",
             "Cogs.Modules.leaves",
             "Cogs.Modules.suspension",
@@ -164,6 +166,7 @@ class Client(commands.AutoShardedBot):
             "Cogs.Modules.staff",
             "Cogs.Modules.promotions",
             "Cogs.Modules.infractions",
+            "Cogs.Modules.punishment_panel",
             "Cogs.Modules.modmail",
             "Cogs.Modules.commands",
             "Cogs.Modules.data",

@@ -25,17 +25,19 @@ class Tree(app_commands.CommandTree):
     ):
 
         if isinstance(error, app_commands.errors.CommandNotFound):
+            # Show which application command wasn't found and give generic guidance
             try:
+                err_text = str(error) or "Application command not found"
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         color=discord.Color.brand_red(),
-                        description="```\nApplication command 'promote' not found\n```",
+                        description=f"```\n{err_text}\n```",
                     ).add_field(
                         name=" How To Fix",
                         value=(
                             f"> 1. Wait a bit; the bot may be loading commands. "
                             f"(Started: <t:{int(self.client.launch_time.timestamp())}:R>)\n"
-                            "> 2. Go to /config -> Modules -> Enable and disable the promotion module."
+                            "> 2. If the missing command is part of a module, go to /config -> Modules and toggle that module off and on."
                         ),
                     ),
                     ephemeral=True,
@@ -147,15 +149,8 @@ class On_error(commands.Cog):
                 }
             )
             view = discord.ui.View()
-            view.add_item(
-                discord.ui.Button(
-                    label="Contact Support",
-                    style=discord.ButtonStyle.link,
-                    url="https://discord.gg/DhWdgfh3hN",
-                )
-            )
             embed = discord.Embed(
-                title=" Command Error",
+                title="An error occurred while attempting to run the command.",
                 description=f"Error ID: `{error_id}`",
                 color=discord.Color.brand_red(),
             )
@@ -169,22 +164,23 @@ class On_error(commands.Cog):
                     else False
                 ),
             )
-            Channel = self.client.get_channel(1333545239930994801)
-            embed = discord.Embed(
-                title="",
-                description=f"```py\n{TRACEBACK}```",
-                color=discord.Color.dark_embed(),
-            )
-            embed.add_field(
-                name="Extra Information",
-                value=f">>> **Guild:** {guild.name} (`{guild.id}`)\n**Command:** {command.qualified_name if command else 'Unknown'}\n**Timestamp:** <t:{int(datetime.now().timestamp())}>",
-                inline=False,
-            )
-            embed.set_footer(text=f"Error ID: {error_id}")
-            msg = await Channel.send(embed=embed)
-            await self.client.db["errors"].update_one(
-                {"error_id": error_id}, {"$set": {"MsgLink": msg.jump_url}}
-            )
+            Channel = self.client.get_channel(1446888231227494560)
+            if Channel:
+                embed = discord.Embed(
+                    title="",
+                    description=f"```py\n{TRACEBACK}```",
+                    color=discord.Color.dark_embed(),
+                )
+                embed.add_field(
+                    name="Extra Information",
+                    value=f">>> **Guild:** {guild.name} (`{guild.id}`)\n**Command:** {command.qualified_name if command else 'Unknown'}\n**Timestamp:** <t:{int(datetime.now().timestamp())}>",
+                    inline=False,
+                )
+                embed.set_footer(text=f"Error ID: {error_id}")
+                msg = await Channel.send(embed=embed)
+                await self.client.db["errors"].update_one(
+                    {"error_id": error_id}, {"$set": {"MsgLink": msg.jump_url}}
+                )
             return
         except discord.Forbidden:
             return

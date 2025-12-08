@@ -1,0 +1,37 @@
+infraction: 6
+sync: 45
+guilds: 14
+whitelist: 12
+loa active: 2
+config: 116
+staff list add: 29
+staff list send: 18
+quota activity view: 13
+quota messages: 32
+loa request: 12
+promotions: 2
+quota: 1
+staff leaderboard: 59
+staff introduction: 16
+staff panel: 14
+staff add: 46
+infraction issue: 18
+quota manage: 2
+feedback give: 5
+connectionrole list: 1
+quota export: 1
+info: 2
+loa admin: 1
+loa manage: 2
+unwhitelist: 3
+premium: 16
+say: 79
+quota reset: 1
+staff remove: 1
+staff edit: 2
+connectionrole add: 1
+connectionrole sync: 1
+staff view: 4
+vps: 1
+features: 1
+

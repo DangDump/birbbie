@@ -161,6 +161,19 @@ class ConfigMenu(discord.ui.Select):
                     interaction.user,
                 )
             )
+        elif selection == "Modcases Quota":
+            from Cogs.Configuration.Components.MessageQuota import (
+                ModcasesQuotaEmbed,
+                ModcasesQuotaOptions,
+            )
+
+            embed = await ModcasesQuotaEmbed(interaction, Config, embed)
+            view = discord.ui.View()
+            view.add_item(
+                ModcasesQuotaOptions(
+                    interaction.user,
+                )
+            )
         elif selection == "LOA":
             from Cogs.Configuration.Components.LOA import (
                 LOAEmbed,
@@ -422,6 +435,12 @@ def Options(Config: dict = None):
             label="Message Quota",
             description="",
             value="Quota",
+            emoji = None,
+        ),
+        discord.SelectOption(
+            label="Modcases Quota",
+            description="",
+            value="Modcases Quota",
             emoji = None,
         ),
         discord.SelectOption(

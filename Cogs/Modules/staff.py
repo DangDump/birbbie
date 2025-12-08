@@ -109,6 +109,129 @@ class AddMessage(discord.ui.Modal, title="Add Messages"):
         )
 
 
+class SetModcases(discord.ui.Modal, title="Set Modcases Count"):
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
+    modcase_count = discord.ui.TextInput(
+        label="Modcase Count",
+        placeholder="Enter the new modcase count",
+        style=discord.TextStyle.short,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            value = int(self.modcase_count.value)
+            if value < 0:
+                raise ValueError("Modcase count cannot be negative.")
+        except ValueError as e:
+            await interaction.response.send_message(
+                f"{no} Invalid input: {str(e)}. Please enter a valid non-negative integer.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.client.qdb["modcases"].update_one(
+            {"guild_id": interaction.guild.id, "user_id": self.user_id},
+            {"$set": {"modcase_count": value}},
+            upsert=True,
+        )
+
+        await interaction.response.edit_message(
+            content=f"{tick} **{interaction.user.display_name}**, the user's modcase count has been updated to `{value}`.",
+            embed=None,
+            view=None,
+        )
+
+
+class AddModcase(discord.ui.Modal, title="Add Modcases"):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+
+    modcase_count = discord.ui.TextInput(
+        label="Added Modcase Count",
+        placeholder="Enter the number of modcases to add",
+        style=discord.TextStyle.short,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            value = int(self.modcase_count.value)
+            if value <= 0:
+                raise ValueError("Modcase count must be a positive integer.")
+        except ValueError:
+            await interaction.response.send_message(
+                f"{no} Invalid input. Please enter a valid positive number for the modcase count.",
+                ephemeral=True,
+            )
+            return
+        result = await interaction.client.qdb["modcases"].update_one(
+            {"guild_id": interaction.guild.id, "user_id": self.user_id},
+            {"$inc": {"modcase_count": value}},
+            upsert=True,
+        )
+        if result.upserted_id:
+            action_message = "added to a new record"
+        else:
+            action_message = "added to the existing record"
+
+        await interaction.response.edit_message(
+            content=f"{tick} **{interaction.user.display_name}**, `{value}` modcases have been successfully {action_message}.",
+            embed=None,
+            view=None,
+        )
+
+
+class RemovedModcase(discord.ui.Modal, title="Remove Modcases"):
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
+    MODCount = discord.ui.TextInput(
+        label="Removed Modcase Count",
+        placeholder="Enter the number of modcases to remove",
+        style=discord.TextStyle.short,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            value = int(self.MODCount.value)
+            if value <= 0:
+                raise ValueError("Modcase count must be a positive integer.")
+        except ValueError as e:
+            await interaction.response.send_message(
+                f"{no} **{interaction.user.display_name},** Please enter a valid positive integer.",
+                ephemeral=True,
+            )
+            return
+
+        guild_id = interaction.guild.id
+        result = await interaction.client.qdb["modcases"].find_one(
+            {"guild_id": guild_id, "user_id": self.user_id}
+        )
+        if not result:
+            await interaction.response.send_message(
+                f"{no} **{interaction.user.display_name},**  No existing record found for this user. Unable to remove modcases.",
+                ephemeral=True,
+            )
+            return
+
+        NewCount = max(0, int(result.get("modcase_count", 0)) - value)
+        await interaction.client.qdb["modcases"].update_one(
+            {"guild_id": guild_id, "user_id": self.user_id},
+            {"$set": {"modcase_count": NewCount}},
+        )
+        await interaction.response.edit_message(
+            content=f"{tick} **{interaction.user.display_name}**, `{value}` modcases have been removed. The new modcase count is `{NewCount}`.",
+            embed=None,
+            view=None,
+        )
+
+
 class RemovedMessage(discord.ui.Modal, title="Remove Messages"):
     def __init__(self, user_id: int):
         super().__init__()
@@ -231,9 +354,73 @@ class StaffManage(discord.ui.View):
         )
 
 
+class StaffManageModcase(discord.ui.View):
+    def __init__(self, staff_id, author):
+        super().__init__(timeout=360)
+        self.value = None
+        self.staff_id = staff_id
+        self.author = author
+
+    @discord.ui.button(
+        label="Add Modcases",
+        style=discord.ButtonStyle.green,
+        emoji=None,
+        row=1,
+    )
+    async def add(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author.id:
+            return await interaction.response.send_message(embed=NotYourPanel(), ephemeral=True)
+        await interaction.response.send_modal(AddModcase(self.staff_id))
+
+    @discord.ui.button(
+        label="Subtract Modcases",
+        style=discord.ButtonStyle.red,
+        emoji=None,
+        row=1,
+    )
+    async def subtract(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author.id:
+            return await interaction.response.send_message(embed=NotYourPanel(), ephemeral=True)
+        await interaction.response.send_modal(RemovedModcase(self.staff_id))
+
+    @discord.ui.button(
+        label="Set Modcases",
+        style=discord.ButtonStyle.blurple,
+        row=2,
+        emoji=None,
+    )
+    async def set(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.author.id:
+            return await interaction.response.send_message(embed=NotYourPanel(), ephemeral=True)
+        await interaction.response.send_modal(SetModcases(self.staff_id))
+
+    @discord.ui.button(
+        label="Reset Modcases",
+        style=discord.ButtonStyle.red,
+        row=2,
+        emoji=None,
+    )
+    async def reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        staff_id = self.staff_id
+        if interaction.user.id != self.author.id:
+            return await interaction.response.send_message(embed=NotYourPanel(), ephemeral=True)
+        filter = {"guild_id": interaction.guild.id, "user_id": staff_id}
+        update = {"$set": {"modcase_count": 0}}
+        await interaction.client.qdb["modcases"].update_one(filter, update)
+
+        await interaction.response.edit_message(
+            content=f"**{tick} {interaction.user.display_name}**, I have reset the staff member's modcase count.",
+            embed=None,
+            view=None,
+        )
+
+
 class quota(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
+        # Register modcases as a subgroup under quota in app commands
+        self.modcases_group = self.ModcasesGroup(self)
+        self.quota.app_command.add_command(self.modcases_group)
 
     @commands.hybrid_group(name="staff")
     async def staff(self, ctx: commands.Context):
@@ -643,6 +830,354 @@ class quota(commands.Cog):
         passedembed.description = passedembed.description[:4096]
         
         await msg.edit(embeds=[passedembed, loaembed, failedembed])
+
+    # Create app_commands context menu / nested group for modcases under quota
+    class ModcasesGroup(app_commands.Group):
+        """Subgroup for modcases quota commands under /quota"""
+        def __init__(self, parent_cog):
+            super().__init__(name="modcases", description="View and manage modcases quota")
+            self.cog = parent_cog
+
+        @app_commands.command(name="wave", description="Punish people failing the modcases quota.")
+        async def app_modcases_wave(self, interaction: discord.Interaction):
+            if not await ModuleCheck(interaction.guild.id, "Quota"):
+                await interaction.response.send_message(embed=ModuleNotEnabled(), view=Support(), ephemeral=True)
+                return
+            if not await ModuleCheck(interaction.guild.id, "infractions"):
+                await interaction.response.send_message(embed=ModuleNotEnabled(), view=Support(), ephemeral=True)
+                return
+            if not await has_admin_role(interaction, "Message Quota Permissions"):
+                return
+
+            passed, failed, on_loa, failedmembers = [], [], [], []
+            Config = await interaction.client.config.find_one({"_id": interaction.guild.id})
+            if not Config:
+                await interaction.response.send_message(embed=BotNotConfigured(), view=Support(), ephemeral=True)
+                return
+
+            if not Config.get("Modcases Quota"):
+                await interaction.response.send_message(embed=ModuleNotSetup(), view=Support(), ephemeral=True)
+                return
+            if Config.get("Infraction", None) is None:
+                return await interaction.response.send_message(embed=ModuleNotSetup(), view=Support(), ephemeral=True)
+
+            await interaction.response.defer()
+
+            if IsSeperateBot():
+                msg = await interaction.followup.send(embed=discord.Embed(description="Loading...", color=discord.Color.dark_embed()))
+            else:
+                msg = await interaction.followup.send(embed=discord.Embed(description="", color=discord.Color.dark_embed()))
+
+            # Fetch all modcase counts and consolidate duplicates
+            modcase_users = (
+                await interaction.client.qdb["modcases"]
+                .find({"guild_id": interaction.guild.id})
+                .to_list(length=None)
+            )
+            modcase_map = {}
+            for ud in modcase_users:
+                uid = ud.get("user_id")
+                if uid not in modcase_map:
+                    modcase_map[uid] = 0
+                modcase_map[uid] += int(ud.get("modcase_count", 0))
+
+            loa_role_id = Config.get("LOA", {}).get("role")
+
+            # Permissions staff/admin roles
+            staff_role_ids = Config.get("Permissions", {}).get("staffrole", [])
+            admin_role_ids = Config.get("Permissions", {}).get("adminrole", [])
+            all_staff_ids = set(staff_role_ids + admin_role_ids)
+
+            # Ensure guild is chunked so members are available
+            if not interaction.guild.chunked:
+                try:
+                    await interaction.guild.chunk()
+                except:
+                    pass
+
+            processed = set()
+
+            # Iterate through all guild members who are staff/admin
+            for member in interaction.guild.members:
+                if not member:
+                    continue
+                # skip bots
+                if member.bot:
+                    continue
+                member_role_ids = {r.id for r in member.roles}
+                if not member_role_ids.intersection(all_staff_ids):
+                    continue
+
+                processed.add(member.id)
+
+                ModcaseCount = int(modcase_map.get(member.id, 0))
+
+                # Determine quota for this member (role-specific overrides default)
+                Roles = Config.get("Modcases Quota", {}).get("Roles", [])
+                Map = {entry.get("ID"): int(entry.get("Quota", 0)) for entry in Roles if entry.get("ID") and entry.get("Quota") is not None}
+                WithQuota = [role for role in member.roles if role.id in Map]
+                if not WithQuota:
+                    quota = int(Config.get("Modcases Quota", {}).get("quota", 0))
+                    Name = ""
+                else:
+                    Highest = max(WithQuota, key=lambda r: r.position)
+                    quota = Map[Highest.id]
+                    Name = f" *#{Highest.name}*"
+
+                CountText = f"• `{ModcaseCount}` modcases" if ModcaseCount else "• `0` modcases"
+                entry = f"> **{member.mention}** {CountText}{Name[:20]}".strip()
+
+                if loa_role_id and any(role.id == loa_role_id for role in member.roles):
+                    on_loa.append(entry)
+                elif ModcaseCount >= quota:
+                    passed.append(entry)
+                else:
+                    failed.append(entry)
+                    failedmembers.append(member)
+
+            # Also include any users who have modcase records but are not present in guild.members
+            # (or not chunked), as long as they are staff/admin per check.
+            for uid, count in modcase_map.items():
+                if uid in processed:
+                    continue
+                try:
+                    member = await interaction.guild.fetch_member(uid)
+                except (discord.NotFound, discord.HTTPException):
+                    continue
+                if not member or member.bot:
+                    continue
+                if not await check_admin_and_staff(interaction.guild, member):
+                    continue
+
+                ModcaseCount = int(count)
+                Roles = Config.get("Modcases Quota", {}).get("Roles", [])
+                Map = {entry.get("ID"): int(entry.get("Quota", 0)) for entry in Roles if entry.get("ID") and entry.get("Quota") is not None}
+                WithQuota = [role for role in member.roles if role.id in Map]
+                if not WithQuota:
+                    quota = int(Config.get("Modcases Quota", {}).get("quota", 0))
+                    Name = ""
+                else:
+                    Highest = max(WithQuota, key=lambda r: r.position)
+                    quota = Map[Highest.id]
+                    Name = f" *#{Highest.name}*"
+
+                CountText = f"• `{ModcaseCount}` modcases" if ModcaseCount else "• `0` modcases"
+                entry = f"> **{member.mention}** {CountText}{Name[:20]}".strip()
+
+                if loa_role_id and any(role.id == loa_role_id for role in member.roles):
+                    on_loa.append(entry)
+                elif ModcaseCount >= quota:
+                    passed.append(entry)
+                else:
+                    failed.append(entry)
+                    failedmembers.append(member)
+
+            # Sort by modcase count
+            def extract_modcase_count(entry):
+                try:
+                    return int(entry.split("`")[1])
+                except:
+                    return 0
+
+            passed.sort(key=extract_modcase_count, reverse=True)
+            failed.sort(key=extract_modcase_count, reverse=True)
+
+            failedembed = discord.Embed(title="", color=discord.Color.dark_embed())
+            failedembed.set_author(name="Failed Users")
+            failedembed.set_footer(text="Select the infraction type to infract with.")
+            failedembed.set_image(url="https://www.astrobirb.dev/invisble.png")
+            if failed:
+                failedembed.description = "\n".join(failed)
+            else:
+                failedembed.description = "> No users failed the quota."
+            view = discord.ui.View()
+            Types = Config.get("Infraction", {}).get("types", [])
+
+            if not Types or len(Types) == 0:
+                from utils.format import DefaultTypes
+                Types = DefaultTypes()
+
+            options = [discord.SelectOption(label=name[:80], value=name[:80]) for name in set(Types)]
+            view.add_item(InfractionTypeSelection(interaction.user, options, failedmembers))
+
+            await msg.edit(embeds=[failedembed], view=view)
+
+        @app_commands.command(name="view", description="View the modcases quota results.")
+        async def app_modcases_view(self, interaction: discord.Interaction):
+            if not await ModuleCheck(interaction.guild.id, "Quota"):
+                await interaction.response.send_message(embed=ModuleNotEnabled(), view=Support(), ephemeral=True)
+                return
+
+            if not await has_admin_role(interaction, "Message Quota Permissions"):
+                return
+
+            passed, failed, on_loa = [], [], []
+            Config = await interaction.client.config.find_one({"_id": interaction.guild.id})
+            if not Config:
+                await interaction.response.send_message(embed=BotNotConfigured(), view=Support(), ephemeral=True)
+                return
+
+            if not Config.get("Modcases Quota"):
+                await interaction.response.send_message(embed=ModuleNotEnabled(), view=Support(), ephemeral=True)
+                return
+            await interaction.response.defer()
+
+            if IsSeperateBot():
+                msg = await interaction.followup.send(embed=discord.Embed(description="Loading...", color=discord.Color.dark_embed()))
+            else:
+                msg = await interaction.followup.send(embed=discord.Embed(description="", color=discord.Color.dark_embed()))
+
+            # Fetch all modcase counts from database
+            modcase_users = (
+                await interaction.client.qdb["modcases"]
+                .find({"guild_id": interaction.guild.id})
+                .to_list(length=None)
+            )
+            
+            # Create a map of user_id to modcase_count (handling duplicates)
+            modcase_map = {}
+            for user_data in modcase_users:
+                user_id = user_data.get("user_id")
+                if user_id not in modcase_map:
+                    modcase_map[user_id] = 0
+                modcase_map[user_id] += user_data.get("modcase_count", 0)
+
+            loa_role_id = Config.get("LOA", {}).get("role")
+            
+            # Get all staff and admin role IDs
+            staff_role_ids = Config.get("Permissions", {}).get("staffrole", [])
+            admin_role_ids = Config.get("Permissions", {}).get("adminrole", [])
+            all_staff_ids = set(staff_role_ids + admin_role_ids)
+            
+            # Iterate through guild members and check if they have staff/admin roles
+            if not interaction.guild.chunked:
+                await interaction.guild.chunk()
+            
+            for member in interaction.guild.members:
+                # Check if member has any staff or admin role
+                member_role_ids = {role.id for role in member.roles}
+                if not member_role_ids.intersection(all_staff_ids):
+                    continue
+                
+                # Get modcase count (default to 0 if not found)
+                ModcaseCount = modcase_map.get(member.id, 0)
+                
+                # Get quota for this member
+                Roles = Config.get("Modcases Quota", {}).get("Roles", [])
+                Map = {entry.get("ID"): int(entry.get("Quota", 0)) for entry in Roles if entry.get("ID") and entry.get("Quota") is not None}
+                WithQuota = [role for role in member.roles if role.id in Map]
+                if not WithQuota:
+                    quota = int(Config.get("Modcases Quota", {}).get("quota", 0))
+                    Name = ""
+                else:
+                    Highest = max(WithQuota, key=lambda r: r.position)
+                    quota = Map[Highest.id]
+                    Name = f" *#{Highest.name}*"
+
+                CountText = f"• `{ModcaseCount}` modcases" if ModcaseCount else "• `0` modcases"
+                entry = f"> **{member.mention}** {CountText}{Name[:20]}".strip()
+
+                if loa_role_id and any(role.id == loa_role_id for role in member.roles):
+                    on_loa.append(entry)
+                elif ModcaseCount >= quota:
+                    passed.append(entry)
+                else:
+                    failed.append(entry)
+
+            # Sort by modcase count (extract from entry string)
+            def extract_modcase_count(entry):
+                try:
+                    return int(entry.split("`")[1])
+                except (IndexError, ValueError):
+                    return 0
+            
+            passed.sort(key=extract_modcase_count, reverse=True)
+            failed.sort(key=extract_modcase_count, reverse=True)
+            on_loa.sort(key=extract_modcase_count, reverse=True)
+            
+            passedembed = discord.Embed(title="Passed", color=discord.Color.brand_green())
+            passedembed.set_image(url="https://www.astrobirb.dev/invisble.png")
+            if passed:
+                passedembed.description = "\n".join(passed)
+            else:
+                passedembed.description = "> No users passed the quota."
+            loaembed = discord.Embed(title="On LOA", color=discord.Color.purple())
+            loaembed.set_image(url="https://www.astrobirb.dev/invisble.png")
+            if on_loa:
+                loaembed.description = "\n".join(on_loa)
+            else:
+                loaembed.description = "> No users on LOA."
+
+            failedembed = discord.Embed(title="Failed", color=discord.Color.brand_red())
+            failedembed.set_image(url="https://www.astrobirb.dev/invisble.png")
+            if failed:
+                failedembed.description = "\n".join(failed)
+            else:
+                failedembed.description = "> No users failed the quota."
+
+            failedembed.description = failedembed.description[:4096]
+            loaembed.description = loaembed.description[:4096]
+            passedembed.description = passedembed.description[:4096]
+            
+            await msg.edit(embeds=[passedembed, loaembed, failedembed])
+
+        @app_commands.command(name="manage", description="Manage a staff's modcases count.")
+        @app_commands.describe(staff="The staff member to manage")
+        async def app_modcases_manage(self, interaction: discord.Interaction, staff: discord.Member):
+            await interaction.response.defer()
+
+            if not await ModuleCheck(interaction.guild.id, "Quota"):
+                await interaction.followup.send(embed=ModuleNotEnabled(), view=Support())
+                return
+            if not await has_admin_role(interaction, "Message Quota Permissions"):
+                return
+            Data = await interaction.client.qdb["modcases"].find_one({"guild_id": interaction.guild.id, "user_id": staff.id})
+
+            Config = await interaction.client.config.find_one({"_id": interaction.guild.id})
+            if Config is None:
+                return await interaction.followup.send(embed=BotNotConfigured(), view=Support())
+            if not Config.get("Modcases Quota"):
+                return await interaction.followup.send(embed=ModuleNotEnabled(), view=Support())
+            YourEmoji = None
+            view = StaffManageModcase(staff.id, interaction.user)
+            YouPlace = None
+            Name = ""
+            if Data:
+                Roles = Config.get("Modcases Quota", {}).get("Roles", [])
+                Map = {entry.get("ID"): int(entry.get("Quota", 0)) for entry in Roles if entry.get("ID") and entry.get("Quota") is not None}
+                WithQuota = [role for role in staff.roles if role.id in Map]
+                if not WithQuota:
+                    Quota = int(Config.get("Modcases Quota", {}).get("quota", 0))
+                else:
+                    Highest = max(WithQuota, key=lambda r: r.position)
+                    Quota = Map[Highest.id]
+                    Name = f" *#{Highest.name}*"
+                OnLOA = False
+                if Config.get("LOA", {}).get("role"):
+                    OnLOA = any(role.id == Config.get("LOA", {}).get("role") for role in staff.roles)
+                YourEmoji = ("`LOA`" if OnLOA else ("Met" if IsSeperateBot() else "") if Data.get("modcase_count", 0) >= Quota else ("Not Met" if IsSeperateBot() else ""))
+                users = (await interaction.client.qdb["modcases"].find({"guild_id": interaction.guild.id}).sort("modcase_count", pymongo.DESCENDING).to_list(length=None))
+                YouPlace = self.cog.GetPlace(users, staff)
+
+            embed = discord.Embed(title=f"", color=discord.Color.dark_embed())
+            embed.add_field(name=" Manage Modcases", value=f"> **Modcases:** {Data.get('modcase_count', 0) if Data else 0} modcases\n> **Passed:** {YourEmoji if YourEmoji else 'N/A'}{Name}\n> **Place:** {ordinal(YouPlace) if Data else 'N/A' if YouPlace else 'N/A'}")
+            embed.set_author(name=f"@{staff.name}", icon_url=staff.display_avatar)
+            embed.set_thumbnail(url=staff.display_avatar)
+            await interaction.followup.send(embed=embed, view=view)
+
+        @app_commands.command(name="reset", description="Reset all modcases counters for this server.")
+        async def app_modcases_reset(self, interaction: discord.Interaction):
+            if not await ModuleCheck(interaction.guild.id, "Quota"):
+                await interaction.response.send_message(embed=ModuleNotEnabled(), view=Support(), ephemeral=True)
+                return
+            if not await has_admin_role(interaction, "Message Quota Permissions"):
+                return
+            await interaction.client.qdb["modcases"].update_many({"guild_id": interaction.guild.id}, {"$set": {"modcase_count": 0}})
+            await interaction.response.send_message(content=f"{tick} Modcases quota counters reset for this server.")
+
+    def __init_subclass__(cls, **kwargs):
+        """Initialize modcases subgroup on quota when cog is loaded"""
+        super().__init_subclass__(**kwargs)
 
     def GetQuota(self, member: discord.Member, config: dict) -> int:
         Roles = config.get("Message Quota", {}).get("Roles", [])

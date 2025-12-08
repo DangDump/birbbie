@@ -41,6 +41,17 @@ async def ModuleOptions(Config, data=None):
             ),
         ),
         discord.SelectOption(
+            label="Modcases Quota",
+            description="",
+            value="Modcases Quota",
+            emoji = None,
+            default=(
+                Config.get("Modules", {}).get("Modcases Quota", False) or False
+                if not data
+                else False
+            ),
+        ),
+        discord.SelectOption(
             label="Forums",
             description="",
             value="Forums",

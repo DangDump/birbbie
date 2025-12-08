@@ -1,8 +1,19 @@
 import discord
 from discord.ext import commands
 import psutil
+import os
 from utils.emojis import *
 from typing import Optional, Literal
+from Cogs.Modules.Utilities.premium import premmies
+
+
+def is_owner(user_id: int) -> bool:
+    """Check if user ID matches the owner in env"""
+    owner = os.getenv("OWNER")
+    if not owner:
+        return False
+    owner_ids = [int(id) for id in owner.split(",")]
+    return user_id in owner_ids
 
 
 class management(commands.Cog):
@@ -12,6 +23,9 @@ class management(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def account(self, ctx: commands.Context, user: discord.User):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await ctx.defer()
 
         Pre = await self.client.db["Subscriptions"].find_one({"user": user.id})
@@ -40,6 +54,9 @@ class management(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def version(self, ctx: commands.Context, v: str):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await self.client.db["Support Variables"].update_one(
             {"_id": 1}, {"$set": {"version": v}}, upsert=True
         )
@@ -47,6 +64,9 @@ class management(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def vps(self, ctx: commands.Context):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await ctx.defer()
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
@@ -61,28 +81,82 @@ class management(commands.Cog):
                 name="` 💫 ` CPU Usage", value=f"{psutil.cpu_percent()}%", inline=False
             )
             .add_field(
-                name="` 💿 ` Disk",
+                name="` 💿 ` Disk   ",
                 value=f"> `Total:` {disk.total / 1e9:.2f} GB\n> `Used:` {disk.used / 1e9:.2f} GB\n> `Usage:` {disk.percent}%",
                 inline=False,
             )
         )
         await ctx.author.send(embed=embed)
 
-    @commands.command()
-    @commands.is_owner()
+    @commands.hybrid_command(name="say", description="Make the bot say something (premium only).")
     async def say(self, ctx: commands.Context, *, message: str):
-        channel = ctx.channel
-        await channel.send(message)
-        await ctx.message.delete()
+        """
+        Send a message as the bot. Only users listed in the premmies list may use this.
+
+        Behavior:
+        - The bot will post `message` into the current channel formatted as **@author:** message.
+        - If invoked as a slash command, the acknowledgement will be sent ephemerally to the user
+          with the text: "{user} message was sent successfully." where {user} is replaced
+          by the invoking user's display name.
+        """
+        # Check if user is premium
+        if ctx.author.id not in premmies:
+            if getattr(ctx, "interaction", None):
+                try:
+                    await ctx.interaction.response.send_message(
+                        "You must be a premium user to use this command.", ephemeral=True
+                    )
+                except Exception:
+                    await ctx.send("You must be a premium user to use this command.")
+            else:
+                await ctx.send("You must be a premium user to use this command.")
+            return
+
+        # Format and send the message to the current channel as the bot
+        formatted = f"**@{ctx.author.display_name}:** {message}"
+        try:
+            await ctx.channel.send(formatted)
+        except Exception as e:
+            # If sending failed, reply with an ephemeral error (if possible)
+            if getattr(ctx, "interaction", None):
+                try:
+                    await ctx.interaction.response.send_message(
+                        "Failed to send message. Ensure I have permission to send messages in this channel.",
+                        ephemeral=True,
+                    )
+                except Exception:
+                    await ctx.send("Failed to send message. Ensure I have permission to send messages in this channel.")
+            else:
+                await ctx.send("Failed to send message. Ensure I have permission to send messages in this channel.")
+            return
+
+        # Confirm to the user. If slash command, send ephemeral; otherwise, reply normally.
+        confirm_text = f"{ctx.author.display_name} message was sent successfully."
+        if getattr(ctx, "interaction", None):
+            try:
+                await ctx.interaction.response.send_message(confirm_text, ephemeral=True)
+            except Exception:
+                # If response already used, use followup
+                try:
+                    await ctx.interaction.followup.send(confirm_text, ephemeral=True)
+                except Exception:
+                    await ctx.send(confirm_text)
+        else:
+            await ctx.send(confirm_text)
 
     @commands.group()
     @commands.is_owner()
     async def features(self, ctx: commands.Context):
-        return
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
 
     @features.command()
     @commands.is_owner()
     async def add(self, ctx: commands.Context, server: int, *, feature: str):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await self.client.db["Config"].update_one(
             {"_id": server}, {"$addToSet": {"Features": feature}}, upsert=True
         )
@@ -93,6 +167,9 @@ class management(commands.Cog):
     @features.command()
     @commands.is_owner()
     async def remove(self, ctx: commands.Context, server: int, *, features: str):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         await self.client.db["Config"].update_one(
             {"_id": server}, {"$pull": {"Features": features}}, upsert=True
         )
@@ -103,6 +180,9 @@ class management(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def analytics(self, ctx: commands.Context):
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
         result = await self.client.db["analytics"].find({}).to_list(length=None)
 
         content = ""
@@ -125,6 +205,9 @@ class management(commands.Cog):
         guilds: commands.Greedy[discord.Object],
         spec: Optional[Literal["~", "*", "^"]] = None,
     ) -> None:
+        if not is_owner(ctx.author.id):
+            await ctx.send("You do not have permission to use this command.")
+            return
 
         if not guilds:
             if spec == "~":
