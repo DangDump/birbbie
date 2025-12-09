@@ -118,6 +118,16 @@ class On_error(commands.Cog):
                 return
             if isinstance(error, commands.MissingPermissions):
                 return
+            if isinstance(error, commands.CheckFailure):
+                await send(
+                    f"If you are certain you have permissions, please check with your server admin if moderation roles have been set up properly. (`/config`)",
+                    ephemeral=(
+                        True
+                        if isinstance(ctx_or_interaction, discord.Interaction)
+                        else False
+                    ),
+                )
+                return
             if isinstance(error, commands.MissingRequiredArgument):
                 await send(
                     f"{no} **{author.display_name}**, you are missing a requirement.",

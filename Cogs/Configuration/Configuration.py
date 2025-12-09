@@ -366,6 +366,13 @@ class ConfigMenu(discord.ui.Select):
 
             view = discord.ui.View()
             embed = await StaffListEmbed(interaction, embed=embed)
+        elif selection == "moderation":
+            from Cogs.Configuration.Components.Moderation import ModerationOption
+
+            view = discord.ui.View()
+            view.add_item(ModerationOption(interaction.user))
+            embed.title = "Moderation"
+            embed.description = "Configure moderation settings for your server."
         view.add_item(ConfigMenu(Options(Config), interaction.user))
         await interaction.edit_original_response(embed=embed, view=view)
 
@@ -512,6 +519,12 @@ def Options(Config: dict = None):
         discord.SelectOption(
             label="Auto Response",
             value="Auto Responder",
+            emoji = None,
+        ),
+        discord.SelectOption(
+            label="Moderation",
+            description="",
+            value="moderation",
             emoji = None,
         ),
     ]

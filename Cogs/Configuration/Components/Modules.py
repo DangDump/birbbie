@@ -192,6 +192,17 @@ async def ModuleOptions(Config, data=None):
                 else False
             ),
         ),
+        discord.SelectOption(
+            label="Moderation",
+            description="",
+            value="moderation",
+            emoji = None,
+            default=(
+                Config.get("Modules", {}).get("moderation", False) or False
+                if not data
+                else False
+            ),
+        ),
     ]
 
 

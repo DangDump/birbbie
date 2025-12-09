@@ -166,7 +166,7 @@ class Client(commands.AutoShardedBot):
             "Cogs.Modules.staff",
             "Cogs.Modules.promotions",
             "Cogs.Modules.infractions",
-            "Cogs.Modules.punishment_panel",
+            "Cogs.Modules.moderation",
             "Cogs.Modules.modmail",
             "Cogs.Modules.commands",
             "Cogs.Modules.data",
